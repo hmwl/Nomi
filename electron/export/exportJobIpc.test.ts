@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearElectronRuntimeForTests, setElectronRuntimeForTests } from "../electronAdapter";
 import type { NomiRenderManifestV1 } from "./exportManifest";
 import { ExportCancelledError, transcodeWebmFileToMp4 } from "./ffmpegRunner";
 
@@ -75,10 +76,17 @@ function makeManifest(projectId = "project-1"): NomiRenderManifestV1 {
 beforeEach(() => {
   vi.clearAllMocks();
   tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-export-job-ipc-test-"));
+  setElectronRuntimeForTests({
+    app: {
+      getPath: (name: string) => path.join(tempRoot, name),
+      getAppPath: () => process.cwd(),
+    },
+  });
   process.env.NOMI_PROJECTS_DIR = tempRoot;
 });
 
 afterEach(() => {
+  clearElectronRuntimeForTests();
   delete process.env.NOMI_PROJECTS_DIR;
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });

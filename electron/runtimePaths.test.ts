@@ -1,17 +1,22 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { clearElectronRuntimeForTests, setElectronRuntimeForTests } from "./electronAdapter";
 
-vi.mock("electron", () => ({
+setElectronRuntimeForTests({
   app: { getPath: () => os.tmpdir(), getAppPath: () => process.cwd() },
-}));
+});
 
 import { readJson, readText } from "./runtimePaths";
 
 const tempRoots: string[] = [];
 afterEach(() => {
   for (const root of tempRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  clearElectronRuntimeForTests();
+  setElectronRuntimeForTests({
+    app: { getPath: () => os.tmpdir(), getAppPath: () => process.cwd() },
+  });
 });
 function makeTempDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-runtime-paths-test-"));

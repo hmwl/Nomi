@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearElectronRuntimeForTests, setElectronRuntimeForTests } from "./electronAdapter";
 import { createProject, importLocalFile, importRemoteAsset } from "./runtime";
 
 type AssetRecord = {
@@ -28,16 +29,31 @@ vi.mock("electron", () => ({
   },
 }));
 
+function installElectronRuntimeMock(): void {
+  setElectronRuntimeForTests({
+    app: {
+      getPath: (name: string) => {
+        if (name === "documents") return mockedDocumentsRoot;
+        if (name === "userData") return mockedUserDataRoot;
+        return mockedUserDataRoot;
+      },
+      getAppPath: () => process.cwd(),
+    },
+  });
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-05-31T12:00:00Z"));
   mockedDocumentsRoot = makeTempDir("nomi-runtime-assets-documents-");
   mockedUserDataRoot = makeTempDir("nomi-runtime-assets-user-data-");
+  installElectronRuntimeMock();
   delete process.env.NOMI_PROJECTS_DIR;
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  clearElectronRuntimeForTests();
   delete process.env.NOMI_PROJECTS_DIR;
   for (const root of tempRoots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });

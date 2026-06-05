@@ -4,7 +4,7 @@
 // safeStorage 走 OS 钥匙串（macOS Keychain / Windows DPAPI / Linux libsecret）。
 // 不可用时（如无 keyring 的 rootless Linux）回退明文，并给记录打 enc 标记，
 // 供下次读取时懒升级（见 runtime.ts readCatalog）。
-import { safeStorage } from "electron";
+import { loadElectronRuntime } from "../electronAdapter";
 
 export type ApiKeyRecord = {
   vendorKey: string;
@@ -19,8 +19,27 @@ export type ApiKeyRecord = {
 
 let __safeStorageAvailableCached: boolean | null = null;
 
+type SafeStorageLike = {
+  isEncryptionAvailable: () => boolean;
+  encryptString: (plain: string) => Buffer;
+  decryptString: (payload: Buffer) => string;
+};
+
+function getSafeStorage(): SafeStorageLike | null {
+  const runtime = loadElectronRuntime() as { safeStorage?: SafeStorageLike } | null;
+  return runtime?.safeStorage && typeof runtime.safeStorage.isEncryptionAvailable === "function"
+    ? runtime.safeStorage
+    : null;
+}
+
 export function isSafeStorageAvailable(): boolean {
   if (__safeStorageAvailableCached !== null) return __safeStorageAvailableCached;
+  const safeStorage = getSafeStorage();
+  if (!safeStorage) {
+    __safeStorageAvailableCached = false;
+    console.warn("[catalog] safeStorage unavailable; API keys will be stored as plaintext");
+    return __safeStorageAvailableCached;
+  }
   try {
     __safeStorageAvailableCached = safeStorage.isEncryptionAvailable();
   } catch {
@@ -34,7 +53,8 @@ export function isSafeStorageAvailable(): boolean {
 
 /** Build a fresh ApiKeyRecord from plaintext, encrypting if safeStorage is available. */
 export function makeApiKeyRecordFromPlain(plain: string, vendorKey: string, enabled: boolean, createdAt: string, updatedAt: string): ApiKeyRecord {
-  if (isSafeStorageAvailable()) {
+  const safeStorage = getSafeStorage();
+  if (safeStorage && isSafeStorageAvailable()) {
     const encrypted = safeStorage.encryptString(plain).toString("base64");
     return { vendorKey, apiKey: encrypted, enc: "safeStorage", enabled, createdAt, updatedAt };
   }
@@ -45,6 +65,8 @@ export function makeApiKeyRecordFromPlain(plain: string, vendorKey: string, enab
 export function decryptApiKeyRecord(rec: ApiKeyRecord | undefined): string {
   if (!rec || !rec.apiKey) return "";
   if (rec.enc === "safeStorage") {
+    const safeStorage = getSafeStorage();
+    if (!safeStorage) return "";
     try {
       return safeStorage.decryptString(Buffer.from(rec.apiKey, "base64"));
     } catch (e) {

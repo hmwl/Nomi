@@ -46,6 +46,7 @@ import {
   ensureBuiltinModelSeeds,
 } from "./runtime";
 import { runOnboardingTrial } from "./ai/onboarding/agent";
+import { listOnboardingModels, testOnboardingConnection } from "./ai/onboarding/connectionProbe";
 import type { ProviderKind, ModelKind } from "./ai/onboarding/types";
 import { openWorkspaceFolder, selectWorkspaceFolder } from "./workspace/workspaceIpc";
 import { listWorkspaceFiles, resolveWorkspaceFilePath } from "./workspace/workspaceFileIndex";
@@ -554,69 +555,7 @@ function registerOnboardingIpc(): void {
   // button. Honest result only — never gates saving. Minimal request body kept
   // conservative for the widest openai-compatible tolerance.
   ipcMain.handle("nomi:onboarding:test-connection", async (_event, payload: Record<string, unknown>) => {
-    const providerKind =
-      payload?.providerKind === "anthropic" ? "anthropic" : "openai-compatible";
-    const rawBaseUrl = String(payload?.baseUrl || "").trim().replace(/\/+$/, "");
-    const baseUrl =
-      providerKind === "anthropic" && !rawBaseUrl ? "https://api.anthropic.com" : rawBaseUrl;
-    const apiKey = String(payload?.apiKey || "").trim();
-    const modelId = String(payload?.modelId || "").trim();
-    if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, error: "接入地址需以 http:// 或 https:// 开头" };
-    // User-supplied relay/proxy headers replay on the probe too, so a gateway that
-    // gates on them doesn't report a false failure.
-    const extraHeaders: Record<string, string> = {};
-    if (payload?.headers && typeof payload.headers === "object") {
-      for (const [k, v] of Object.entries(payload.headers as Record<string, unknown>)) {
-        const key = String(k).trim();
-        const value = String(v ?? "").trim();
-        if (key && value) extraHeaders[key] = value;
-      }
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    try {
-      const url =
-        providerKind === "anthropic" ? `${baseUrl}/v1/messages` : `${baseUrl}/chat/completions`;
-      const headers: Record<string, string> =
-        providerKind === "anthropic"
-          ? {
-              "content-type": "application/json",
-              "anthropic-version": "2023-06-01",
-              ...(apiKey ? { "x-api-key": apiKey } : {}),
-              ...extraHeaders,
-            }
-          : {
-              "content-type": "application/json",
-              ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-              ...extraHeaders,
-            };
-      const body =
-        providerKind === "anthropic"
-          ? {
-              model: modelId || "claude-3-5-haiku-latest",
-              max_tokens: 1,
-              messages: [{ role: "user", content: "ping" }],
-            }
-          : {
-              model: modelId || "gpt-3.5-turbo",
-              messages: [{ role: "user", content: "ping" }],
-              max_tokens: 1,
-            };
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      if (res.ok) return { ok: true, status: res.status };
-      const text = await res.text().catch(() => "");
-      return { ok: false, status: res.status, error: text.slice(0, 300) || `HTTP ${res.status}` };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, error: message };
-    } finally {
-      clearTimeout(timeout);
-    }
+    return testOnboardingConnection(payload);
   });
 
   // Auto-discover the endpoint's models via the standard list-models call, so the
@@ -624,55 +563,7 @@ function registerOnboardingIpc(): void {
   // OpenAI-compatible and expose this; when they don't, the UI falls back to manual
   // id entry (this just returns ok:false and nothing is blocked).
   ipcMain.handle("nomi:onboarding:list-models", async (_event, payload: Record<string, unknown>) => {
-    const providerKind =
-      payload?.providerKind === "anthropic" ? "anthropic" : "openai-compatible";
-    const rawBaseUrl = String(payload?.baseUrl || "").trim().replace(/\/+$/, "");
-    const baseUrl =
-      providerKind === "anthropic" && !rawBaseUrl ? "https://api.anthropic.com" : rawBaseUrl;
-    const apiKey = String(payload?.apiKey || "").trim();
-    if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, error: "接入地址需以 http:// 或 https:// 开头" };
-    const extraHeaders: Record<string, string> = {};
-    if (payload?.headers && typeof payload.headers === "object") {
-      for (const [k, v] of Object.entries(payload.headers as Record<string, unknown>)) {
-        const key = String(k).trim();
-        const value = String(v ?? "").trim();
-        if (key && value) extraHeaders[key] = value;
-      }
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    try {
-      // openai-compatible baseUrl already ends in /v1 → /models; anthropic baseUrl
-      // is the host root → /v1/models.
-      const url =
-        providerKind === "anthropic" ? `${baseUrl}/v1/models` : `${baseUrl}/models`;
-      const headers: Record<string, string> =
-        providerKind === "anthropic"
-          ? {
-              "anthropic-version": "2023-06-01",
-              ...(apiKey ? { "x-api-key": apiKey } : {}),
-              ...extraHeaders,
-            }
-          : {
-              ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-              ...extraHeaders,
-            };
-      const res = await fetch(url, { method: "GET", headers, signal: controller.signal });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        return { ok: false, status: res.status, error: text.slice(0, 300) || `HTTP ${res.status}` };
-      }
-      const json = (await res.json().catch(() => null)) as { data?: Array<{ id?: unknown }> } | null;
-      const models = Array.isArray(json?.data)
-        ? json!.data.map((m) => String(m?.id || "").trim()).filter(Boolean)
-        : [];
-      return { ok: true, models };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, error: message };
-    } finally {
-      clearTimeout(timeout);
-    }
+    return listOnboardingModels(payload);
   });
 }
 

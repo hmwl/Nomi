@@ -41,6 +41,7 @@ export type { ExportJobEvent, ExportJobSnapshot }
 
 export type DesktopBridge = {
   platform: string
+  logRendererCrash?: (message: unknown) => void
   workspace: {
     selectFolder: () => Promise<{ canceled: true } | { canceled: false; rootPath: string }>
     openFolder: (payload: { rootPath: string; initialize?: boolean; name?: string }) => Promise<unknown>

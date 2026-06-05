@@ -15,6 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearElectronRuntimeForTests, setElectronRuntimeForTests } from "./electronAdapter";
 import {
   commitManualOpenAiCompatibleModels,
   deriveVendorKeyFromBaseUrl,
@@ -42,6 +43,21 @@ vi.mock("electron", () => ({
   },
 }));
 
+function installElectronRuntimeMock(): void {
+  setElectronRuntimeForTests({
+    app: {
+      getPath: () => mockedUserDataRoot,
+      getAppPath: () => process.cwd(),
+    },
+    // Force the plaintext key path so the round-trip works headless (no OS keychain).
+    safeStorage: {
+      isEncryptionAvailable: () => false,
+      encryptString: (s: string) => Buffer.from(s),
+      decryptString: (b: Buffer) => b.toString(),
+    },
+  });
+}
+
 function makeTempDir(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   tempRoots.push(dir);
@@ -50,9 +66,11 @@ function makeTempDir(prefix: string): string {
 
 beforeEach(() => {
   mockedUserDataRoot = makeTempDir("nomi-manual-onboarding-");
+  installElectronRuntimeMock();
 });
 
 afterEach(() => {
+  clearElectronRuntimeForTests();
   for (const root of tempRoots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
   }

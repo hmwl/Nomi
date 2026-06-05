@@ -41,7 +41,7 @@ function createManualChunks(id: string): string | undefined {
 }
 
 export default defineConfig(({ command, mode }) => {
-  loadEnv(mode, process.cwd(), 'VITE_');
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
 
   if (command === 'build' && mode !== 'production') {
     throw new Error(
@@ -55,6 +55,16 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: 5173,
       host: true,
+      ...(env.VITE_NOMI_RUNTIME === 'web'
+        ? {
+            proxy: {
+              '/api': {
+                target: env.VITE_NOMI_API_PROXY_TARGET || 'http://127.0.0.1:8787',
+                changeOrigin: true,
+              },
+            },
+          }
+        : {}),
       fs: {
         allow: [resolve(__dirname)],
       },

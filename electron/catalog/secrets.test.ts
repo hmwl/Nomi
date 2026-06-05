@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { setElectronRuntimeForTests } from "../electronAdapter";
 
 // 可控的 safeStorage mock：可用；encrypt/decrypt 互为逆（identity 编码，便于断言往返）；
 // 对哨兵明文 "FAIL" 在解密时抛错，用来覆盖解密失败分支。
-vi.mock("electron", () => ({
+setElectronRuntimeForTests({
   safeStorage: {
     isEncryptionAvailable: () => true,
     encryptString: (plain: string) => Buffer.from(plain, "utf8"),
@@ -12,7 +13,7 @@ vi.mock("electron", () => ({
       return s;
     },
   },
-}));
+});
 
 import { decryptApiKeyRecord, isSafeStorageAvailable, makeApiKeyRecordFromPlain } from "./secrets";
 

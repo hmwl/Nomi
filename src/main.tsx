@@ -7,6 +7,7 @@ import { ModalsProvider } from '@mantine/modals'
 import { Notifications } from '@mantine/notifications'
 import './styles/index.css'
 import { buildNomiTheme } from './theme/nomiTheme'
+import { installWebBridge } from './web/webBridge'
 
 const DEFAULT_COLOR_SCHEME = 'light'
 
@@ -16,6 +17,7 @@ function primeColorSchemeAttribute() {
 }
 
 primeColorSchemeAttribute()
+installWebBridge()
 
 function DynamicThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = React.useMemo(() => buildNomiTheme(), [])
